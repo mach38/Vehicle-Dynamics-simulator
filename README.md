@@ -4,7 +4,9 @@ A real car has two front wheels, generating their own lateral force. For lateral
 
 The model is derived from Newton's second law and validated through steady-state analysis and time-domain simulation. 
 
-I built this for experience of what engineers do with simplified models to make decisions using vehicle dynamics before real, physical track testing
+I built this for experience of what engineers do with simplified models to make decisions using vehicle dynamics before real, physical track testing.
+
+## Key plots and findings
 
 ## Tools used
 Python, numPy, matplotlib, SciPy, pandas
