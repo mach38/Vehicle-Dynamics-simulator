@@ -8,6 +8,8 @@ To investigate how vehicle parameters influence the handling behaviour of an F1 
 - Steady state behaviour
 - Yaw rate gain
 - Vehicle stability
+## Notes ⚠️
+At first I quantified a 20% reduction, however after changing some values I calculated a 35% reduction in steady state yaw gain
 ## Bicycle model🚴
 A real car has two front wheels, generating their own lateral force. For lateral dynamics analysis, which is important in motorsport, the two front wheels behave similarly enough so we treat them as one wheel. This is known as the bicycle model, where a 4 wheeled car transforms into a 2 wheeled car. Containing 2 DOFS (lateral velocity and yaw rate)
 
