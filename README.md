@@ -7,6 +7,7 @@ The model is derived from Newton's second law and validated through steady-state
 I built this for experience of what engineers do with simplified models to make decisions using vehicle dynamics before real, physical track testing.
 
 ## Key plots and findings
+<img width="883" height="392" alt="image" src="https://github.com/user-attachments/assets/b0677412-149f-47d3-aeda-d0a90f6de4e1" />
 
 ## Tools used
 Python, numPy, matplotlib, SciPy, pandas
