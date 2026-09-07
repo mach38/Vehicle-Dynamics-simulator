@@ -1,31 +1,398 @@
-class VehicleParas:
+# installing all the relevant libraries
+import numpy as np
+import matplotlib.pyplot as plt
+from scipy.integrate import solve_ivp
+
+# vehicle parameters
+class VehicleParams:
     def __init__(self, m, Iz, lf, lr, Cf, Cr, Vx):
         self.m = m
-        self.Iz = Iz # m*L/3^3 with L = 2.6
+        self.Iz = Iz
         self.lf = lf
         self.lr = lr
         self.Cf = Cf
         self.Cr = Cr
-        self.Vx = Vx # in m/s
+        self.Vx = Vx
 
-car = VehicleParas(m=1500, Iz=1128, lf=1.2, lr=1.4, Cf=80000, Cr=80000, Vx=20)
-print(car.m)
-
-def state_derivative(t, x, params, delta_func):
-    vy, r =x
-    delta =delta_func(t)
-
-    vy_dot=(-(params.Cf + params.Cr) / (params.m * params.Vx)) * vy \
-             + (-params.Vx - (params.Cf * params.lf - params.Cr * params.lr) / (params.m * params.Vx)) * r \
-             + (params.Cf / params.m) * delta
-
-    r_dot =(-(params.Cf * params.lf - params.Cr * params.lr) / (params.Iz * params.Vx)) * vy \
-    + -(params.Cf * params.lf **2 + params.Cr * params.lr**2)/ (params.Iz * params.Vx) * r \
-    + (params.Cf * params.lf / params.Iz) * delta
-    return [vy_dot, r_dot]
-
-import numpy as np
-from scipy.integrate import solve_ivp
-import matplotlib.pyplot as plt
-
+# Neutral vehicle for baseline
+car_neutral = VehicleParams(
+    m=1500,
+    Iz=1128,
+    lf=1.2,
+    lr=1.4,
+    Cf=80000,
+    Cr=80000,
+    Vx=20
+)
+# understeer configuration, higher rear stiffness relative to front
+car_understeer = VehicleParams(
+    m=1500,
+    Iz=1128,
+    lf=1.2,
+    lr=1.4,
+    Cf=63000,
+    Cr=97000,
+    Vx=20
+)
+# oversteer configuration, lower rear stiffness relative to front
+car_oversteer = VehicleParams(
+    m=1500,
+    Iz=1128,
+    lf=1.2,
+    lr=1.4,
+    Cf=97000,
+    Cr=63000,
+    Vx=20
+)
+# steering input for a 2 degree input applied at t = 0.5s
 def delta_func(t):
+    if t < 0.5:
+        return 0.0
+    else:
+        return np.deg2rad(2)
+
+# vehicle state derivative
+def state_derivative(t, x, params, delta_func):
+    # state variables
+    vy, r = x
+    # steering input
+    delta = delta_func(t)
+    # lateral velocity derivative
+    vy_dot = (
+        -(params.Cf + params.Cr)
+        / (params.m * params.Vx)
+    ) * vy + (
+        -params.Vx
+        - (params.Cf * params.lf - params.Cr * params.lr)
+        / (params.m * params.Vx)
+    ) * r + (
+        params.Cf / params.m
+    ) * delta
+
+    # Yaw rate derivative
+    r_dot = (
+        -(params.Cf * params.lf - params.Cr * params.lr)
+        / (params.Iz * params.Vx)
+    ) * vy + (
+        -(params.Cf * params.lf**2 + params.Cr * params.lr**2)
+        / (params.Iz * params.Vx)
+    ) * r + (
+        params.Cf * params.lf / params.Iz
+    ) * delta
+
+    return [vy_dot, r_dot]
+# transiet simulation, step steer is disturbance
+def simulate_vehicle(params):
+
+    t_span = (0, 4)
+    t_eval = np.linspace(
+        0,
+        4,
+        1000
+    )
+    initial_state = [0, 0]
+    solution = solve_ivp( # for integration
+        state_derivative,
+        t_span,
+        initial_state,
+        args=(params, delta_func),
+        t_eval=t_eval
+    )
+
+    return solution
+
+# running step-steer simulation
+sol_neutral = simulate_vehicle(car_neutral)
+sol_understeer = simulate_vehicle(car_understeer)
+sol_oversteer = simulate_vehicle(car_oversteer)
+
+# plotting step steer response
+plt.figure(figsize=(9, 5))
+plt.plot(
+    sol_neutral.t,
+    sol_neutral.y[1],
+    label="Neutral",
+    color = "purple"
+)
+plt.plot(
+    sol_understeer.t,
+    sol_understeer.y[1],
+    label="Understeer",
+    color = "pink"
+)
+plt.plot(
+    sol_oversteer.t,
+    sol_oversteer.y[1],
+    label="Oversteer",
+    color="gold"
+)
+plt.xlabel("Time (s)")
+plt.ylabel("Yaw rate r (rad/s)")
+plt.title("Vehicle Response to 2° Step Steer")
+plt.legend()
+plt.grid(True)
+plt.tight_layout()
+plt.show()
+
+# steady state response for end result
+def steady_state_response(params, delta):
+    # system matrix
+    A = np.array([
+        [
+            -(params.Cf + params.Cr)
+            / (params.m * params.Vx),
+
+            -params.Vx
+            - (params.Cf * params.lf - params.Cr * params.lr)
+            / (params.m * params.Vx)
+        ],
+        [
+            -(params.Cf * params.lf - params.Cr * params.lr)
+            / (params.Iz * params.Vx),
+
+            -(params.Cf * params.lf**2
+              + params.Cr * params.lr**2)
+            / (params.Iz * params.Vx)
+        ]
+    ])
+    # Steering input vector
+    B = np.array([
+        params.Cf / params.m,
+        params.Cf * params.lf / params.Iz
+    ])
+    steady_state = np.linalg.solve(
+        A,
+        -B * delta
+    )
+    return steady_state
+
+
+# steady state handelling response
+def handling_response(params, delta_range):
+    alpha_difference = []
+    yaw_rates = []
+    for delta in delta_range:
+        # solve for vy and r
+        vy, r = steady_state_response(
+            params,
+            delta
+        )
+        # front tyre slip angle 
+        alpha_f = (
+            delta
+            - (vy + params.lf * r)
+            / params.Vx
+        )
+        # rear tyre slip angle
+        alpha_r = (
+            params.lr * r - vy
+        ) / params.Vx
+        # Difference in slip angles
+        alpha_difference.append(
+            alpha_f - alpha_r
+        )
+        # Store yaw rate
+        yaw_rates.append(r)
+
+    return (
+        np.array(alpha_difference),
+        np.array(yaw_rates)
+    )
+
+
+# steering angle sweep
+
+delta_range = np.deg2rad(
+    np.linspace(-6, 6, 100)
+)
+
+# Calculate handling responses
+alpha_neutral, r_neutral = handling_response(
+    car_neutral,
+    delta_range
+)
+alpha_understeer, r_understeer = handling_response(
+    car_understeer,
+    delta_range
+)
+alpha_oversteer, r_oversteer = handling_response(
+    car_oversteer,
+    delta_range
+)
+
+# handelling diagram
+plt.figure(figsize=(9, 5))
+
+plt.plot(
+    np.rad2deg(delta_range),
+    np.rad2deg(alpha_neutral),
+    label="Neutral",
+    color="purple"
+)
+plt.plot(
+    np.rad2deg(delta_range),
+    np.rad2deg(alpha_understeer),
+    label="Understeer",
+    color="pink"
+)
+plt.plot(
+    np.rad2deg(delta_range),
+    np.rad2deg(alpha_oversteer),
+    label="Oversteer",
+    color="gold"
+)
+plt.axhline(
+    0,
+    linewidth=1
+)
+plt.xlabel("Steering angle δ (deg)")
+plt.ylabel(
+    "Front - Rear Slip Angle (deg)"
+)
+plt.title(
+    "Steady-State Handling Diagram"
+)
+plt.legend()
+plt.grid(True)
+plt.tight_layout()
+plt.show()
+
+# yaw rate vs steering angle
+plt.figure(figsize=(9, 5))
+plt.plot(
+    np.rad2deg(delta_range),
+    r_neutral,
+    label="Neutral",
+    color = "purple"
+)
+plt.plot(
+    np.rad2deg(delta_range),
+    r_understeer,
+    label="Understeer",
+    color = "pink"
+)
+plt.plot(
+    np.rad2deg(delta_range),
+    r_oversteer,
+    label="Oversteer",
+    color = "gold"
+)
+plt.xlabel("Steering angle δ (deg)")
+plt.ylabel(
+    "Yaw rate r (rad/s)"
+)
+plt.title(
+    "Steady-State Yaw Rate"
+)
+plt.legend()
+plt.grid(True)
+plt.tight_layout()
+plt.show()
+
+# yaw rate gain
+yaw_gain_neutral = (
+    r_neutral / delta_range
+)
+yaw_gain_understeer = (
+    r_understeer / delta_range
+)
+yaw_gain_oversteer = (
+    r_oversteer / delta_range
+)
+# plotting
+plt.figure(figsize=(9, 5))
+plt.plot(
+    np.rad2deg(delta_range),
+    yaw_gain_neutral,
+    label="Neutral",
+    color = "purple"
+)
+plt.plot(
+    np.rad2deg(delta_range),
+    yaw_gain_understeer,
+    label="Understeer",
+    color = "pink"
+)
+plt.plot(
+    np.rad2deg(delta_range),
+    yaw_gain_oversteer,
+    label="Oversteer",
+    color = "gold"
+)
+plt.xlabel("Steering angle δ (deg)")
+plt.ylabel(
+    "Yaw rate gain r/δ (1/s)"
+)
+plt.title(
+    "Yaw Rate Gain"
+)
+plt.legend()
+plt.grid(True)
+plt.tight_layout()
+plt.show()
+# results at 6 rad steering
+delta_6 = np.deg2rad(6)
+_, r_neutral_6 = steady_state_response(
+    car_neutral,
+    delta_6
+)
+_, r_understeer_6 = steady_state_response(
+    car_understeer,
+    delta_6
+)
+
+_, r_oversteer_6 = steady_state_response(
+    car_oversteer,
+    delta_6
+)
+
+# Calculate yaw-rate gains
+gain_neutral = (
+    r_neutral_6 / delta_6
+)
+
+gain_understeer = (
+    r_understeer_6 / delta_6
+)
+
+gain_oversteer = (
+    r_oversteer_6 / delta_6
+)
+
+# Percentage changes relative to neutral
+understeer_change = (
+    (gain_understeer - gain_neutral)
+    / gain_neutral
+) * 100
+
+oversteer_change = (
+    (gain_oversteer - gain_neutral)
+    / gain_neutral
+) * 100
+
+print("=" * 50)
+print("STEADY-STATE RESULTS AT 6° STEERING")
+print("=" * 50)
+print(
+    f"Neutral yaw-rate gain: "
+    f"{gain_neutral:.4f} 1/s"
+)
+print(
+    f"Understeer yaw-rate gain: "
+    f"{gain_understeer:.4f} 1/s"
+)
+print(
+    f"Oversteer yaw-rate gain: "
+    f"{gain_oversteer:.4f} 1/s"
+)
+print()
+print(
+    f"Understeer change vs neutral: "
+    f"{understeer_change:.2f}%"
+)
+print(
+    f"Oversteer change vs neutral: "
+    f"{oversteer_change:.2f}%"
+)
+print("=" * 50)
+    
