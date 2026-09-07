@@ -1,0 +1,31 @@
+class VehicleParas:
+    def __init__(self, m, Iz, lf, lr, Cf, Cr, Vx):
+        self.m = m
+        self.Iz = Iz # m*L/3^3 with L = 2.6
+        self.lf = lf
+        self.lr = lr
+        self.Cf = Cf
+        self.Cr = Cr
+        self.Vx = Vx # in m/s
+
+car = VehicleParas(m=1500, Iz=1128, lf=1.2, lr=1.4, Cf=80000, Cr=80000, Vx=20)
+print(car.m)
+
+def state_derivative(t, x, params, delta_func):
+    vy, r =x
+    delta =delta_func(t)
+
+    vy_dot=(-(params.Cf + params.Cr) / (params.m * params.Vx)) * vy \
+             + (-params.Vx - (params.Cf * params.lf - params.Cr * params.lr) / (params.m * params.Vx)) * r \
+             + (params.Cf / params.m) * delta
+
+    r_dot =(-(params.Cf * params.lf - params.Cr * params.lr) / (params.Iz * params.Vx)) * vy \
+    + -(params.Cf * params.lf **2 + params.Cr * params.lr**2)/ (params.Iz * params.Vx) * r \
+    + (params.Cf * params.lf / params.Iz) * delta
+    return [vy_dot, r_dot]
+
+import numpy as np
+from scipy.integrate import solve_ivp
+import matplotlib.pyplot as plt
+
+def delta_func(t):
